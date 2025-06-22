@@ -140,15 +140,30 @@ namespace TwitchLib.EventSub.Websockets
         /// <summary>
         /// Event that triggers on "channel.hype_train.begin" notifications
         /// </summary>
+        [Obsolete("This event is deprecated, please use: ChannelHypeTrainBeginV2")]
         public event AsyncEventHandler<ChannelHypeTrainBeginArgs>? ChannelHypeTrainBegin;
+        /// <summary>
+        /// Event that triggers on "channel.hype_train.begin" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelHypeTrainBeginV2Args>? ChannelHypeTrainBeginV2;
         /// <summary>
         /// Event that triggers on "channel.hype_train.end" notifications
         /// </summary>
+        [Obsolete("This event is deprecated, please use: ChannelHypeTrainEndV2")]
         public event AsyncEventHandler<ChannelHypeTrainEndArgs>? ChannelHypeTrainEnd;
+        /// <summary>
+        /// Event that triggers on "channel.hype_train.end" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelHypeTrainEndV2Args>? ChannelHypeTrainEndV2;
         /// <summary>
         /// Event that triggers on "channel.hype_train.progress" notifications
         /// </summary>
+        [Obsolete("This event is deprecated, please use: ChannelHypeTrainProgressV2")]
         public event AsyncEventHandler<ChannelHypeTrainProgressArgs>? ChannelHypeTrainProgress;
+        /// <summary>
+        /// Event that triggers on "channel.hype_train.progress" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelHypeTrainProgressV2Args>? ChannelHypeTrainProgressV2;
 
         /// <summary>
         /// Event that triggers on "channel.moderator.add" notifications
