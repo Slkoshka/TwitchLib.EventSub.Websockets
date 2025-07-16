@@ -31,14 +31,14 @@ internal abstract class NotificationHandler<TEvent, TModel> : INotificationHandl
             if (data is null)
                 throw new InvalidOperationException("Parsed JSON cannot be null!");
 
-            client.RaiseEvent("UserUpdate", new TEvent { Notification = data });
+            client.RaiseEvent(EventName, new TEvent { Notification = data });
         }
         catch (Exception ex)
         {
             // TODO events are async, so we NEVER get here
             // possible solutions:
             // rewriting RaiseEvent to return: 'Task?' and await if not null
-            client.RaiseEvent("ErrorOccurred", new ErrorOccuredArgs { Exception = ex, Message = $"Error encountered while trying to handle {SubscriptionType}/{SubscriptionVersion} notification! Raw Json: {jsonString}" });
+            client.RaiseEvent(nameof(EventSubWebsocketClient.ErrorOccurred), new ErrorOccuredArgs { Exception = ex, Message = $"Error encountered while trying to handle {SubscriptionType}/{SubscriptionVersion} notification! Raw Json: {jsonString}" });
         }
 #pragma warning restore CA1031 // Do not catch general exception types
     }
