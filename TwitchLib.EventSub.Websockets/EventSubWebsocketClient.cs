@@ -2,16 +2,16 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TwitchLib.EventSub.Core;
 using TwitchLib.EventSub.Core.Extensions;
+using TwitchLib.EventSub.Core.SubscriptionTypes.Automod;
 using TwitchLib.EventSub.Core.SubscriptionTypes.Channel;
+using TwitchLib.EventSub.Core.SubscriptionTypes.Conduit;
+using TwitchLib.EventSub.Core.SubscriptionTypes.Stream;
+using TwitchLib.EventSub.Core.SubscriptionTypes.User;
 using TwitchLib.EventSub.Websockets.Client;
 using TwitchLib.EventSub.Websockets.Core.EventArgs;
 using TwitchLib.EventSub.Websockets.Core.EventArgs.Automod;
@@ -19,7 +19,6 @@ using TwitchLib.EventSub.Websockets.Core.EventArgs.Channel;
 using TwitchLib.EventSub.Websockets.Core.EventArgs.Conduit;
 using TwitchLib.EventSub.Websockets.Core.EventArgs.Stream;
 using TwitchLib.EventSub.Websockets.Core.EventArgs.User;
-using TwitchLib.EventSub.Websockets.Core.Handler;
 using TwitchLib.EventSub.Websockets.Core.Models;
 using TwitchLib.EventSub.Websockets.Extensions;
 
@@ -48,6 +47,10 @@ namespace TwitchLib.EventSub.Websockets
         /// Event that triggers when the websocket was successfully reconnected
         /// </summary>
         public event AsyncEventHandler? WebsocketReconnected;
+        /// <summary>
+        /// Event that triggers when the websocket received revocation event
+        /// </summary>
+        public event AsyncEventHandler<RevocationArgs>? Revocation;
 
         /// <summary>
         /// Event that triggers when EventSub send notification, that's unknown. (ie.: not implementet ... yet!)
@@ -72,7 +75,7 @@ namespace TwitchLib.EventSub.Websockets
         /// <summary>
         /// Event that triggers on "automod.settings.update" notifications
         /// </summary>
-        public event AsyncEventHandler<AutomodMessageUpdateV2Args>? AutomodSettingsUpdate;
+        public event AsyncEventHandler<AutomodSettingsUpdateArgs>? AutomodSettingsUpdate;
         /// <summary>
         /// Event that triggers on "automod.terms.update" notifications
         /// </summary>
@@ -175,11 +178,11 @@ namespace TwitchLib.EventSub.Websockets
         /// <summary>
         /// Event that triggers on "channel.guest_star_session.begin" notifications
         /// </summary>
-        public event AsyncEventHandler<ChannelGuestStarSessionBegin>? ChannelGuestStarSessionBegin;
+        public event AsyncEventHandler<ChannelGuestStarSessionBeginArgs>? ChannelGuestStarSessionBegin;
         /// <summary>
         /// Event that triggers on "channel.guest_star_guest.update" notifications
         /// </summary>
-        public event AsyncEventHandler<ChannelGuestStarSessionEnd>? ChannelGuestStarSessionEnd;
+        public event AsyncEventHandler<ChannelGuestStarSessionEndArgs>? ChannelGuestStarSessionEnd;
         /// <summary>
         /// Event that triggers on "channel.guest_star_settings.update" notifications
         /// </summary>
@@ -372,17 +375,17 @@ namespace TwitchLib.EventSub.Websockets
         /// Event that triggers on "user.whisper.message" notifications
         /// </summary>
         public event AsyncEventHandler<UserWhisperMessageArgs>? UserWhisperMessage;
-        
+
         /// <summary>
         /// Event that triggers on "channel.shared_chat.begin" notifications
         /// </summary>
         public event AsyncEventHandler<ChannelSharedChatSessionBeginArgs>? ChannelSharedChatSessionBegin;
-        
+
         /// <summary>
         /// Event that triggers on "channel.shared_chat.update" notifications
         /// </summary>
         public event AsyncEventHandler<ChannelSharedChatSessionUpdateArgs>? ChannelSharedChatSessionUpdate;
-        
+
         /// <summary>
         /// Event that triggers on "channel.shared_chat.end" notifications
         /// </summary>
@@ -415,7 +418,6 @@ namespace TwitchLib.EventSub.Websockets
 
         private WebsocketClient _websocketClient;
 
-        private readonly Dictionary<(string Type, string Version), Action<EventSubWebsocketClient, string, JsonSerializerOptions>> _handlers = new();
         private readonly ILogger<EventSubWebsocketClient> _logger;
         private readonly ILoggerFactory? _loggerFactory;
         private readonly IServiceProvider? _serviceProvider;
@@ -433,11 +435,10 @@ namespace TwitchLib.EventSub.Websockets
         /// Instantiates an EventSubWebsocketClient used to subscribe to EventSub notifications via Websockets.
         /// </summary>
         /// <param name="logger">Logger for the EventSubWebsocketClient</param>
-        /// <param name="handlers">Enumerable of SubscriptionType handlers</param>
         /// <param name="serviceProvider">DI Container to resolve other dependencies dynamically</param>
         /// <param name="websocketClient">Underlying Websocket client to connect to connect to EventSub Websocket service</param>
         /// <exception cref="ArgumentNullException">Throws ArgumentNullException if a dependency is null</exception>
-        public EventSubWebsocketClient(ILogger<EventSubWebsocketClient> logger, IEnumerable<INotificationHandler> handlers, IServiceProvider serviceProvider, WebsocketClient websocketClient)
+        public EventSubWebsocketClient(ILogger<EventSubWebsocketClient> logger, IServiceProvider serviceProvider, WebsocketClient websocketClient)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
@@ -445,8 +446,6 @@ namespace TwitchLib.EventSub.Websockets
             _websocketClient = websocketClient ?? throw new ArgumentNullException(nameof(websocketClient));
             _websocketClient.OnDataReceived += OnDataReceived;
             _websocketClient.OnErrorOccurred += OnErrorOccurred;
-
-            PrepareHandlers(handlers);
 
             _reconnectComplete = false;
             _reconnectRequested = false;
@@ -470,14 +469,6 @@ namespace TwitchLib.EventSub.Websockets
 
             _websocketClient.OnDataReceived += OnDataReceived;
             _websocketClient.OnErrorOccurred += OnErrorOccurred;
-
-            var handlers = typeof(INotificationHandler)
-                .Assembly.ExportedTypes
-                .Where(x => typeof(INotificationHandler).IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract)
-                .Select(Activator.CreateInstance).Cast<INotificationHandler>()
-                .ToList();
-
-            PrepareHandlers(handlers);
 
             _reconnectComplete = false;
             _reconnectRequested = false;
@@ -600,23 +591,6 @@ namespace TwitchLib.EventSub.Websockets
         }
 
         /// <summary>
-        /// Setup handlers for all supported subscription types
-        /// </summary>
-        /// <param name="handlers">Enumerable of handlers that are responsible for acting on a specified subscription type</param>
-        private void PrepareHandlers(IEnumerable<INotificationHandler> handlers)
-        {
-            foreach (var handler in handlers)
-            {
-#if NET6_0_OR_GREATER
-                _handlers.TryAdd((handler.SubscriptionType, handler.SubscriptionVersion), handler.Handle);
-#else
-                if (!_handlers.ContainsKey((handler.SubscriptionType, handler.SubscriptionVersion)))
-                    _handlers.Add((handler.SubscriptionType, handler.SubscriptionVersion), handler.Handle);
-#endif
-            }
-        }
-
-        /// <summary>
         /// Background operation checking the client health based on the last received message and the Twitch specified minimum frequency + a 20% grace period.
         /// <para>E.g. a Twitch specified 10 seconds minimum frequency would result in 12 seconds used by the client to honor network latencies and so on.</para>
         /// </summary>
@@ -673,12 +647,10 @@ namespace TwitchLib.EventSub.Websockets
                         await ErrorOccurred.InvokeAsync(this, new ErrorOccuredArgs { Exception = new ArgumentException("Unable to determine subscription type or subscription version!") });
                         break;
                     }
-                    var message1 = Encoding.UTF8.GetString(e.Bytes);
-                    HandleNotification(message1, subscriptionType!, subscriptionVersion);
+                    await HandleNotificationAsync(e.Bytes, subscriptionType!, subscriptionVersion!);
                     break;
                 case "revocation":
-                    var message2 = Encoding.UTF8.GetString(e.Bytes);
-                    HandleRevocation(message2);
+                    await HandleRevocation(e.Bytes);
                     break;
                 default:
                     _logger?.LogUnknownMessageType(messageType);
@@ -760,48 +732,114 @@ namespace TwitchLib.EventSub.Websockets
         /// <param name="message">notification message received from Twitch EventSub</param>
         /// <param name="subscriptionType">subscription type received from Twitch EventSub</param>
         /// <param name="subscriptionVersion">subscription type received from Twitch EventSub</param>
-        private void HandleNotification(string message, string subscriptionType, string subscriptionVersion)
+        private async Task HandleNotificationAsync(byte[] message, string subscriptionType, string subscriptionVersion)
         {
-            if (_handlers.TryGetValue((subscriptionType, subscriptionVersion), out var handler) || _handlers.TryGetValue((string.Empty, string.Empty), out handler))
-                handler(this, message, _jsonSerializerOptions);
+            var task = (subscriptionType, subscriptionVersion) switch
+            {
+                ("automod.message.hold", "1") => InvokeEventSubEvent<AutomodMessageHoldArgs, EventSubNotification<AutomodMessageHold>>(AutomodMessageHold),
+                ("automod.message.hold", "2") => InvokeEventSubEvent<AutomodMessageHoldV2Args, EventSubNotification<AutomodMessageHoldV2>>(AutomodMessageHoldV2),
+                ("automod.message.update", "1") => InvokeEventSubEvent<AutomodMessageUpdateArgs, EventSubNotification<AutomodMessageUpdate>>(AutomodMessageUpdate),
+                ("automod.message.update", "2") => InvokeEventSubEvent<AutomodMessageUpdateV2Args, EventSubNotification<AutomodMessageUpdateV2>>(AutomodMessageUpdateV2),
+                ("automod.settings.update", "1") => InvokeEventSubEvent<AutomodSettingsUpdateArgs, EventSubNotification<AutomodSettingsUpdate>>(AutomodSettingsUpdate),
+                ("automod.terms.update", "1") => InvokeEventSubEvent<AutomodTermsUpdateArgs, EventSubNotification<AutomodTermsUpdate>>(AutomodTermsUpdate),
+                ("channel.bits.use", "1") => InvokeEventSubEvent<ChannelBitsUseArgs, EventSubNotification<ChannelBitUse>>(ChannelBitsUse),
+                ("channel.update", "2") => InvokeEventSubEvent<ChannelUpdateArgs, EventSubNotification<ChannelUpdate>>(ChannelUpdate),
+                ("channel.follow", "2") => InvokeEventSubEvent<ChannelFollowArgs, EventSubNotification<ChannelFollow>>(ChannelFollow),
+                ("channel.ad_break.begin", "1") => InvokeEventSubEvent<ChannelAdBreakBeginArgs, EventSubNotification<ChannelAdBreakBegin>>(ChannelAdBreakBegin),
+                ("channel.chat.clear", "1") => InvokeEventSubEvent<ChannelChatClearArgs, EventSubNotification<ChannelChatClear>>(ChannelChatClear),
+                ("channel.chat.clear_user_messages", "1") => InvokeEventSubEvent<ChannelChatClearUserMessagesArgs, EventSubNotification<ChannelChatClearUserMessage>>(ChannelChatClearUserMessages),
+                ("channel.chat.message", "1") => InvokeEventSubEvent<ChannelChatMessageArgs, EventSubNotification<ChannelChatMessage>>(ChannelChatMessage),
+                ("channel.chat.message_delete", "1") => InvokeEventSubEvent<ChannelChatMessageDeleteArgs, EventSubNotification<ChannelChatMessageDelete>>(ChannelChatMessageDelete),
+                ("channel.chat.notification", "1") => InvokeEventSubEvent<ChannelChatNotificationArgs, EventSubNotification<ChannelChatNotification>>(ChannelChatNotification),
+                ("channel.chat_settings.update", "1") => InvokeEventSubEvent<ChannelChatSettingsUpdateArgs, EventSubNotification<ChannelChatSettingsUpdate>>(ChannelChatSettingsUpdate),
+                ("channel.chat.user_message_hold", "1") => InvokeEventSubEvent<ChannelChatUserMessageHoldArgs, EventSubNotification<ChannelChatUserMessageHold>>(ChannelChatUserMessageHold),
+                ("channel.chat.user_message_update", "1") => InvokeEventSubEvent<ChannelChatUserMessageUpdateArgs, EventSubNotification<ChannelChatUserMessageUpdate>>(ChannelChatUserMessageUpdate),
+                ("channel.shared_chat.begin", "1") => InvokeEventSubEvent<ChannelSharedChatSessionBeginArgs, EventSubNotification<ChannelSharedChatSessionBegin>>(ChannelSharedChatSessionBegin),
+                ("channel.shared_chat.update", "1") => InvokeEventSubEvent<ChannelSharedChatSessionUpdateArgs, EventSubNotification<ChannelSharedChatSessionUpdate>>(ChannelSharedChatSessionUpdate),
+                ("channel.shared_chat.end", "1") => InvokeEventSubEvent<ChannelSharedChatSessionEndArgs, EventSubNotification<ChannelSharedChatSessionEnd>>(ChannelSharedChatSessionEnd),
+                ("channel.subscribe", "1") => InvokeEventSubEvent<ChannelSubscribeArgs, EventSubNotification<ChannelSubscribe>>(ChannelSubscribe),
+                ("channel.subscription.end", "1") => InvokeEventSubEvent<ChannelSubscriptionEndArgs, EventSubNotification<ChannelSubscriptionEnd>>(ChannelSubscriptionEnd),
+                ("channel.subscription.gift", "1") => InvokeEventSubEvent<ChannelSubscriptionGiftArgs, EventSubNotification<ChannelSubscriptionGift>>(ChannelSubscriptionGift),
+                ("channel.subscription.message", "1") => InvokeEventSubEvent<ChannelSubscriptionMessageArgs, EventSubNotification<ChannelSubscriptionMessage>>(ChannelSubscriptionMessage),
+                ("channel.cheer", "1") => InvokeEventSubEvent<ChannelCheerArgs, EventSubNotification<ChannelCheer>>(ChannelCheer),
+                ("channel.raid", "1") => InvokeEventSubEvent<ChannelRaidArgs, EventSubNotification<ChannelRaid>>(ChannelRaid),
+                ("channel.ban", "1") => InvokeEventSubEvent<ChannelBanArgs, EventSubNotification<ChannelBan>>(ChannelBan),
+                ("channel.unban", "1") => InvokeEventSubEvent<ChannelUnbanArgs, EventSubNotification<ChannelUnban>>(ChannelUnban),
+                ("channel.unban_request.create", "1") => InvokeEventSubEvent<ChannelUnbanRequestCreateArgs, EventSubNotification<ChannelUnbanRequestCreate>>(ChannelUnbanRequestCreate),
+                ("channel.unban_request.resolve", "1") => InvokeEventSubEvent<ChannelUnbanRequestResolveArgs, EventSubNotification<ChannelUnbanRequestResolve>>(ChannelUnbanRequestResolve),
+                ("channel.moderate", "1") => InvokeEventSubEvent<ChannelModerateArgs, EventSubNotification<ChannelModerate>>(ChannelModerate),
+                ("channel.moderate", "2") => InvokeEventSubEvent<ChannelModerateV2Args, EventSubNotification<ChannelModerateV2>>(ChannelModerateV2),
+                ("channel.moderator.add", "1") => InvokeEventSubEvent<ChannelModeratorArgs, EventSubNotification<ChannelModerator>>(ChannelModeratorAdd),
+                ("channel.moderator.remove", "1") => InvokeEventSubEvent<ChannelModeratorArgs, EventSubNotification<ChannelModerator>>(ChannelModeratorRemove),
+                ("channel.guest_star_session.begin", "beta") => InvokeEventSubEvent<ChannelGuestStarSessionBeginArgs, EventSubNotification<ChannelGuestStarSessionBegin>>(ChannelGuestStarSessionBegin),
+                ("channel.guest_star_session.end", "beta") => InvokeEventSubEvent<ChannelGuestStarSessionEndArgs, EventSubNotification<ChannelGuestStarSessionEnd>>(ChannelGuestStarSessionEnd),
+                ("channel.guest_star_guest.update", "beta") => InvokeEventSubEvent<ChannelGuestStarGuestUpdateArgs, EventSubNotification<ChannelGuestStarGuestUpdate>>(ChannelGuestStarGuestUpdate),
+                ("channel.guest_star_settings.update", "beta") => InvokeEventSubEvent<ChannelGuestStarSettingsUpdateArgs, EventSubNotification<ChannelGuestStarSettingsUpdate>>(ChannelGuestStarSettingsUpdate),
+                ("channel.channel_points_automatic_reward_redemption.add", "1") => InvokeEventSubEvent<ChannelPointsAutomaticRewardRedemptionArgs, EventSubNotification<ChannelPointsAutomaticRewardRedemption>>(ChannelPointsAutomaticRewardRedemptionAdd),
+                ("channel.channel_points_automatic_reward_redemption.add", "2") => InvokeEventSubEvent<ChannelPointsAutomaticRewardRedemptionAddV2Args, EventSubNotification<ChannelPointsAutomaticRewardRedemptionV2>>(ChannelPointsAutomaticRewardRedemptionAddV2),
+                ("channel.channel_points_custom_reward.add", "1") => InvokeEventSubEvent<ChannelPointsCustomRewardArgs, EventSubNotification<ChannelPointsCustomReward>>(ChannelPointsCustomRewardAdd),
+                ("channel.channel_points_custom_reward.update", "1") => InvokeEventSubEvent<ChannelPointsCustomRewardArgs, EventSubNotification<ChannelPointsCustomReward>>(ChannelPointsCustomRewardUpdate),
+                ("channel.channel_points_custom_reward.remove", "1") => InvokeEventSubEvent<ChannelPointsCustomRewardArgs, EventSubNotification<ChannelPointsCustomReward>>(ChannelPointsCustomRewardRemove),
+                ("channel.channel_points_custom_reward_redemption.add", "1") => InvokeEventSubEvent<ChannelPointsCustomRewardRedemptionArgs, EventSubNotification<ChannelPointsCustomRewardRedemption>>(ChannelPointsCustomRewardRedemptionAdd),
+                ("channel.channel_points_custom_reward_redemption.update", "1") => InvokeEventSubEvent<ChannelPointsCustomRewardRedemptionArgs, EventSubNotification<ChannelPointsCustomRewardRedemption>>(ChannelPointsCustomRewardRedemptionUpdate),
+                ("channel.poll.begin", "1") => InvokeEventSubEvent<ChannelPollBeginArgs, EventSubNotification<ChannelPollBegin>>(ChannelPollBegin),
+                ("channel.poll.progress", "1") => InvokeEventSubEvent<ChannelPollProgressArgs, EventSubNotification<ChannelPollProgress>>(ChannelPollProgress),
+                ("channel.poll.end", "1") => InvokeEventSubEvent<ChannelPollEndArgs, EventSubNotification<ChannelPollEnd>>(ChannelPollEnd),
+                ("channel.prediction.begin", "1") => InvokeEventSubEvent<ChannelPredictionBeginArgs, EventSubNotification<ChannelPredictionBegin>>(ChannelPredictionBegin),
+                ("channel.prediction.progress", "1") => InvokeEventSubEvent<ChannelPredictionProgressArgs, EventSubNotification<ChannelPredictionProgress>>(ChannelPredictionProgress),
+                ("channel.prediction.lock", "1") => InvokeEventSubEvent<ChannelPredictionLockArgs, EventSubNotification<ChannelPredictionLock>>(ChannelPredictionLock),
+                ("channel.prediction.end", "1") => InvokeEventSubEvent<ChannelPredictionEndArgs, EventSubNotification<ChannelPredictionEnd>>(ChannelPredictionEnd),
+                ("channel.suspicious_user.message", "1") => InvokeEventSubEvent<ChannelSuspiciousUserMessageArgs, EventSubNotification<ChannelSuspiciousUserMessage>>(ChannelSuspiciousUserMessage),
+                ("channel.suspicious_user.update", "1") => InvokeEventSubEvent<ChannelSuspiciousUserUpdateArgs, EventSubNotification<ChannelSuspiciousUserUpdate>>(ChannelSuspiciousUserUpdate),
+                ("channel.vip.add", "1") => InvokeEventSubEvent<ChannelVipArgs, EventSubNotification<ChannelVip>>(ChannelVipAdd),
+                ("channel.vip.remove", "1") => InvokeEventSubEvent<ChannelVipArgs, EventSubNotification<ChannelVip>>(ChannelVipRemove),
+                ("channel.warning.acknowledge", "1") => InvokeEventSubEvent<ChannelWarningAcknowledgeArgs, EventSubNotification<ChannelWarningAcknowledge>>(ChannelWarningAcknowledge),
+                ("channel.warning.send", "1") => InvokeEventSubEvent<ChannelWarningSendArgs, EventSubNotification<ChannelWarningSend>>(ChannelWarningSend),
+                ("channel.charity_campaign.donate", "1") => InvokeEventSubEvent<ChannelCharityCampaignDonateArgs, EventSubNotification<ChannelCharityCampaignDonate>>(ChannelCharityCampaignDonate),
+                ("channel.charity_campaign.start", "1") => InvokeEventSubEvent<ChannelCharityCampaignStartArgs, EventSubNotification<ChannelCharityCampaignStart>>(ChannelCharityCampaignStart),
+                ("channel.charity_campaign.progress", "1") => InvokeEventSubEvent<ChannelCharityCampaignProgressArgs, EventSubNotification<ChannelCharityCampaignProgress>>(ChannelCharityCampaignProgress),
+                ("channel.charity_campaign.stop", "1") => InvokeEventSubEvent<ChannelCharityCampaignStopArgs, EventSubNotification<ChannelCharityCampaignStop>>(ChannelCharityCampaignStop),
+                ("conduit.shard.disabled", "1") => InvokeEventSubEvent<ConduitShardDisabledArgs, EventSubNotification<ConduitShardDisabled>>(ConduitShardDisabled),
+                ("channel.goal.begin", "1") => InvokeEventSubEvent<ChannelGoalBeginArgs, EventSubNotification<ChannelGoalBegin>>(ChannelGoalBegin),
+                ("channel.goal.progress", "1") => InvokeEventSubEvent<ChannelGoalProgressArgs, EventSubNotification<ChannelGoalProgress>>(ChannelGoalProgress),
+                ("channel.goal.end", "1") => InvokeEventSubEvent<ChannelGoalEndArgs, EventSubNotification<ChannelGoalEnd>>(ChannelGoalEnd),
+                ("channel.hype_train.begin", "2") => InvokeEventSubEvent<ChannelHypeTrainBeginV2Args, EventSubNotification<HypeTrainBeginV2>>(ChannelHypeTrainBeginV2),
+                ("channel.hype_train.progress", "2") => InvokeEventSubEvent<ChannelHypeTrainProgressV2Args, EventSubNotification<HypeTrainProgressV2>>(ChannelHypeTrainProgressV2),
+                ("channel.hype_train.end", "2") => InvokeEventSubEvent<ChannelHypeTrainEndV2Args, EventSubNotification<HypeTrainEndV2>>(ChannelHypeTrainEndV2),
+                ("channel.shield_mode.begin", "1") => InvokeEventSubEvent<ChannelShieldModeBeginArgs, EventSubNotification<ChannelShieldModeBegin>>(ChannelShieldModeBegin),
+                ("channel.shield_mode.end", "1") => InvokeEventSubEvent<ChannelShieldModeEndArgs, EventSubNotification<ChannelShieldModeEnd>>(ChannelShieldModeEnd),
+                ("channel.shoutout.create", "1") => InvokeEventSubEvent<ChannelShoutoutCreateArgs, EventSubNotification<ChannelShoutoutCreate>>(ChannelShoutoutCreate),
+                ("channel.shoutout.receive", "1") => InvokeEventSubEvent<ChannelShoutoutReceiveArgs, EventSubNotification<ChannelShoutoutReceive>>(ChannelShoutoutReceive),
+                ("stream.online", "1") => InvokeEventSubEvent<StreamOnlineArgs, EventSubNotification<StreamOnline>>(StreamOnline),
+                ("stream.offline", "1") => InvokeEventSubEvent<StreamOfflineArgs, EventSubNotification<StreamOffline>>(StreamOffline),
+                ("user.update", "1") => InvokeEventSubEvent<UserUpdateArgs, EventSubNotification<UserUpdate>>(UserUpdate),
+                ("user.whisper.message", "1") => InvokeEventSubEvent<UserWhisperMessageArgs, EventSubNotification<UserWhisperMessage>>(UserWhisperMessage),
+                _ => InvokeEventSubEvent<UnknownEventSubNotificationArgs, EventSubNotification<JsonElement>>(UnknownEventSubNotification),
+            };
+            await task;
+
+            async Task InvokeEventSubEvent<TEvent, TModel>(AsyncEventHandler<TEvent>? asyncEventHandler)
+                where TEvent : TwitchLibEventSubEventArgs<TModel>, new()
+                where TModel : new()
+            {
+
+                var notification = JsonSerializer.Deserialize<TModel>(message, _jsonSerializerOptions);
+                await asyncEventHandler.InvokeAsync(this, new TEvent { Notification = notification });
+            }
         }
 
         /// <summary>
         /// Handles 'revocation' notifications
         /// </summary>
         /// <param name="message">notification message received from Twitch EventSub</param>
-        private void HandleRevocation(string message)
+        private async Task HandleRevocation(byte[] message)
         {
-            if (_handlers.TryGetValue(("revocation", string.Empty), out var handler))
-                handler(this, message, _jsonSerializerOptions);
-        }
+            var data = JsonSerializer.Deserialize<EventSubNotification<object>>(message, _jsonSerializerOptions);
 
-        /// <summary>
-        /// Raises an event from this class from a handler by reflection
-        /// </summary>
-        /// <param name="eventName">name of the event to raise</param>
-        /// <param name="args">args to pass with the event</param>
-        internal async void RaiseEvent(string eventName, object? args = null)
-        {
-            var fInfo = GetType().GetField(eventName, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (data is null)
+                throw new InvalidOperationException("Parsed JSON cannot be null!");
 
-            if (fInfo?.GetValue(this) is not MulticastDelegate multi)
-                return;
-
-            var parameters = new object[] { this, args ?? EventArgs.Empty };
-            foreach (var del in multi.GetInvocationList())
-            {
-                try
-                {
-                    var result = del.Method.Invoke(del.Target, parameters);
-                    if (result is Task task)
-                        await task;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogRaiseEventExeption(eventName, ex);
-                }
-            }
+            await Revocation?.InvokeAsync(this, new RevocationArgs { Notification = data });
         }
     }
 }
