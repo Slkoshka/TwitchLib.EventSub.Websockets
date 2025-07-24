@@ -77,6 +77,10 @@ namespace TwitchLib.EventSub.Websockets
         /// Event that triggers on "automod.terms.update" notifications
         /// </summary>
         public event AsyncEventHandler<AutomodTermsUpdateArgs>? AutomodTermsUpdate;
+        /// <summary>
+        /// Event that triggers on "channel.bits.use" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelBitsUseArgs>? ChannelBitsUse;
 
         /// <summary>
         /// Event that triggers on "channel.ad_break.begin" notifications
@@ -126,6 +130,18 @@ namespace TwitchLib.EventSub.Websockets
         /// </summary>
         public event AsyncEventHandler<ChannelChatNotificationArgs>? ChannelChatNotification;
         /// <summary>
+        /// Event that triggers on "channel.chat_settings.update" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelChatSettingsUpdateArgs>? ChannelChatSettingsUpdate;
+        /// <summary>
+        /// Event that triggers on "channel.chat.user_message_hold" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelChatUserMessageHoldArgs>? ChannelChatUserMessageHold;
+        /// <summary>
+        /// Event that triggers on "channel.chat.user_message_update" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelChatUserMessageUpdateArgs>? ChannelChatUserMessageUpdate;
+        /// <summary>
         /// Event that triggers on "channel.cheer" notifications
         /// </summary>
         public event AsyncEventHandler<ChannelCheerArgs>? ChannelCheer;
@@ -169,24 +185,9 @@ namespace TwitchLib.EventSub.Websockets
         /// </summary>
         public event AsyncEventHandler<ChannelGuestStarSettingsUpdateArgs>? ChannelGuestStarSettingsUpdate;
         /// <summary>
-        /// Event that triggers on "channel.guest_star_slot.update" notifications
-        /// </summary>
-        public event AsyncEventHandler<ChannelGuestStarSlotUpdateArgs>? ChannelGuestStarSlotUpdate;
-
-        /// <summary>
-        /// Event that triggers on "channel.hype_train.begin" notifications
-        /// </summary>
-        [Obsolete("This event is deprecated, please use: ChannelHypeTrainBeginV2")]
-        public event AsyncEventHandler<ChannelHypeTrainBeginArgs>? ChannelHypeTrainBegin;
-        /// <summary>
         /// Event that triggers on "channel.hype_train.begin" notifications
         /// </summary>
         public event AsyncEventHandler<ChannelHypeTrainBeginV2Args>? ChannelHypeTrainBeginV2;
-        /// <summary>
-        /// Event that triggers on "channel.hype_train.end" notifications
-        /// </summary>
-        [Obsolete("This event is deprecated, please use: ChannelHypeTrainEndV2")]
-        public event AsyncEventHandler<ChannelHypeTrainEndArgs>? ChannelHypeTrainEnd;
         /// <summary>
         /// Event that triggers on "channel.hype_train.end" notifications
         /// </summary>
@@ -194,13 +195,16 @@ namespace TwitchLib.EventSub.Websockets
         /// <summary>
         /// Event that triggers on "channel.hype_train.progress" notifications
         /// </summary>
-        [Obsolete("This event is deprecated, please use: ChannelHypeTrainProgressV2")]
-        public event AsyncEventHandler<ChannelHypeTrainProgressArgs>? ChannelHypeTrainProgress;
-        /// <summary>
-        /// Event that triggers on "channel.hype_train.progress" notifications
-        /// </summary>
         public event AsyncEventHandler<ChannelHypeTrainProgressV2Args>? ChannelHypeTrainProgressV2;
 
+        /// <summary>
+        /// Event that triggers on "channel.moderate" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelModerateArgs>? ChannelModerate;
+        /// <summary>
+        /// Event that triggers on "channel.moderate" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelModerateV2Args>? ChannelModerateV2;
         /// <summary>
         /// Event that triggers on "channel.moderator.add" notifications
         /// </summary>
@@ -236,6 +240,10 @@ namespace TwitchLib.EventSub.Websockets
         /// Event that triggers on "channel.channel_points_automatic_reward_redemption.add" notifications
         /// </summary>
         public event AsyncEventHandler<ChannelPointsAutomaticRewardRedemptionArgs>? ChannelPointsAutomaticRewardRedemptionAdd;
+        /// <summary>
+        /// Event that triggers on "channel.channel_points_automatic_reward_redemption.add" notifications
+        /// </summary>
+        public event AsyncEventHandler<ChannelPointsAutomaticRewardRedemptionAddV2Args>? ChannelPointsAutomaticRewardRedemptionAddV2;
 
         /// <summary>
         /// Event that triggers on "channel.channel_points_custom_reward_redemption.add" notifications
