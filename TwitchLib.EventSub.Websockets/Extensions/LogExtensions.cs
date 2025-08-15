@@ -10,8 +10,8 @@ namespace TwitchLib.EventSub.Websockets.Extensions
     {
         const LogLevel LogMessageLogLevel = LogLevel.Debug;
 
-        [LoggerMessage(LogLevel.Error, "Exeption was throw when raising '{eventName}' event.")]
-        public static partial void LogRaiseEventExeption(this ILogger<EventSubWebsocketClient> logger, string eventName, Exception ex);
+        [LoggerMessage(LogLevel.Error, "{message}")]
+        public static partial void LogExeption(this ILogger<EventSubWebsocketClient> logger, string message, Exception ex);
 
         [LoggerMessage(LogMessageLogLevel, "{message}")]
         public static partial void LogMessage(this ILogger<EventSubWebsocketClient> logger, string message);

@@ -421,7 +421,7 @@ namespace TwitchLib.EventSub.Websockets
         private WebsocketClient _websocketClient;
 
         private readonly ILogger<EventSubWebsocketClient> _logger;
-        private readonly ILoggerFactory? _loggerFactory;
+        private readonly ILoggerFactory _loggerFactory;
         private readonly IServiceProvider? _serviceProvider;
 
         private readonly JsonSerializerOptions _jsonSerializerOptions = new JsonSerializerOptions
@@ -459,15 +459,10 @@ namespace TwitchLib.EventSub.Websockets
         /// <param name="loggerFactory">LoggerFactory used to construct Loggers for the EventSubWebsocketClient and underlying classes</param>
         public EventSubWebsocketClient(ILoggerFactory? loggerFactory = null)
         {
-            _loggerFactory = loggerFactory;
+            _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
 
-            _logger = _loggerFactory != null
-                ? _loggerFactory.CreateLogger<EventSubWebsocketClient>()
-                : NullLogger<EventSubWebsocketClient>.Instance;
-
-            _websocketClient = _loggerFactory != null
-                ? new WebsocketClient(_loggerFactory.CreateLogger<WebsocketClient>())
-                : new WebsocketClient();
+            _logger = _loggerFactory.CreateLogger<EventSubWebsocketClient>();
+            _websocketClient = new WebsocketClient(_loggerFactory.CreateLogger<WebsocketClient>());
 
             _websocketClient.OnDataReceived += OnDataReceived;
             _websocketClient.OnErrorOccurred += OnErrorOccurred;
@@ -533,7 +528,7 @@ namespace TwitchLib.EventSub.Websockets
 
                 var reconnectClient = _serviceProvider != null
                     ? _serviceProvider.GetRequiredService<WebsocketClient>()
-                    : new WebsocketClient(_loggerFactory?.CreateLogger<WebsocketClient>());
+                    : new WebsocketClient(_loggerFactory.CreateLogger<WebsocketClient>());
 
                 reconnectClient.OnDataReceived += OnDataReceived;
                 reconnectClient.OnErrorOccurred += OnErrorOccurred;
@@ -579,7 +574,7 @@ namespace TwitchLib.EventSub.Websockets
 
             _websocketClient = _serviceProvider != null
                 ? _serviceProvider.GetRequiredService<WebsocketClient>()
-                : new WebsocketClient(_loggerFactory?.CreateLogger<WebsocketClient>());
+                : new WebsocketClient(_loggerFactory.CreateLogger<WebsocketClient>());
 
             _websocketClient.OnDataReceived += OnDataReceived;
             _websocketClient.OnErrorOccurred += OnErrorOccurred;
@@ -619,7 +614,7 @@ namespace TwitchLib.EventSub.Websockets
         /// </summary>
         /// <param name="sender">Sender of the event. In this case <see cref="WebsocketClient"/></param>
         /// <param name="e">EventArgs send with the event. <see cref="DataReceivedArgs"/></param>
-        private async Task OnDataReceived(object sender, DataReceivedArgs e)
+        private async Task OnDataReceived(object? sender, DataReceivedArgs e)
         {
             _logger?.LogMessage(e.Bytes);
             _lastReceived = DateTimeOffset.Now;
@@ -627,29 +622,37 @@ namespace TwitchLib.EventSub.Websockets
             var json = JsonDocument.Parse(e.Bytes);
             var metadata = json.RootElement.GetProperty("metadata"u8).Deserialize<WebsocketEventSubMetadata>(_jsonSerializerOptions)!;
             var payload = json.RootElement.GetProperty("payload"u8);
-            switch (metadata.MessageType)
+
+            try
             {
-                case "session_welcome":
-                    await HandleWelcome(metadata, payload);
-                    break;
-                case "session_disconnect":
-                    await HandleDisconnect(metadata, payload);
-                    break;
-                case "session_reconnect":
-                    HandleReconnect(metadata, payload);
-                    break;
-                case "session_keepalive":
-                    HandleKeepAlive(metadata, payload);
-                    break;
-                case "notification":
-                    await HandleNotificationAsync(metadata, payload);
-                    break;
-                case "revocation":
-                    await HandleRevocation(metadata, payload);
-                    break;
-                default:
-                    _logger?.LogUnknownMessageType(metadata.MessageType);
-                    break;
+                switch (metadata.MessageType)
+                {
+                    case "session_welcome":
+                        await HandleWelcome(metadata, payload);
+                        break;
+                    case "session_disconnect":
+                        await HandleDisconnect(metadata, payload);
+                        break;
+                    case "session_reconnect":
+                        HandleReconnect(metadata, payload);
+                        break;
+                    case "session_keepalive":
+                        HandleKeepAlive(metadata, payload);
+                        break;
+                    case "notification":
+                        await HandleNotificationAsync(metadata, payload);
+                        break;
+                    case "revocation":
+                        await HandleRevocation(metadata, payload);
+                        break;
+                    default:
+                        _logger?.LogUnknownMessageType(metadata.MessageType);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogExeption("Error while processing EventSub notification", ex);
             }
         }
 
@@ -658,7 +661,7 @@ namespace TwitchLib.EventSub.Websockets
         /// </summary>
         /// <param name="sender">Sender of the event. In this case <see cref="WebsocketClient"/></param>
         /// <param name="e">EventArgs send with the event. <see cref="ErrorOccuredArgs"/></param>
-        private async Task OnErrorOccurred(object sender, ErrorOccuredArgs e)
+        private async Task OnErrorOccurred(object? sender, ErrorOccuredArgs e)
         {
             await ErrorOccurred.InvokeAsync(this, e);
         }
