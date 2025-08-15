@@ -31,8 +31,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageReference Include="TwitchLib.EventSub.Core" Version="3.0.0-preview.63.b1866db" />
-	  <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="TwitchLib.EventSub.Core" Version="3.0.0-preview.66.38522ef" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
