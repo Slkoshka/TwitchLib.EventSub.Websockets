@@ -28,8 +28,8 @@ namespace TwitchLib.EventSub.Websockets.Extensions
         [LoggerMessage(LogLevel.Warning, "Found unknown message type: {messageType}")]
         public static partial void LogUnknownMessageType(this ILogger<EventSubWebsocketClient> logger, string messageType);
         
-        [LoggerMessage(LogLevel.Critical, "{closeStatus} - {closeStatusDescription}")]
-        public static partial void LogWebsocketClosed(this ILogger<WebsocketClient> logger, WebSocketCloseStatus closeStatus, string closeStatusDescription);
+        [LoggerMessage("{closeStatus} - {closeStatusDescription}")]
+        public static partial void LogWebsocketClosed(this ILogger<WebsocketClient> logger, LogLevel logLevel, WebSocketCloseStatus closeStatus, string closeStatusDescription);
 
         public static void LogMessage(this ILogger<EventSubWebsocketClient> logger, byte[] message)
         {

@@ -154,7 +154,8 @@ namespace TwitchLib.EventSub.Websockets.Client
                         case WebSocketMessageType.Binary:
                             break;
                         case WebSocketMessageType.Close:
-                            _logger?.LogWebsocketClosed((WebSocketCloseStatus)_webSocket.CloseStatus!, _webSocket.CloseStatusDescription!);
+                            var logLevel = _webSocket.CloseStatus is WebSocketCloseStatus.NormalClosure ? LogLevel.Information : LogLevel.Critical;
+                            _logger?.LogWebsocketClosed(logLevel, (WebSocketCloseStatus)_webSocket.CloseStatus!, _webSocket.CloseStatusDescription!);
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
