@@ -10,8 +10,8 @@ namespace TwitchLib.EventSub.Websockets.Extensions
     {
         const LogLevel LogMessageLogLevel = LogLevel.Debug;
 
-        [LoggerMessage(LogLevel.Error, "Exeption was throw when raising '{eventName}' event.")]
-        public static partial void LogRaiseEventExeption(this ILogger<EventSubWebsocketClient> logger, string eventName, Exception ex);
+        [LoggerMessage(LogLevel.Error, "{message}")]
+        public static partial void LogExeption(this ILogger<EventSubWebsocketClient> logger, string message, Exception ex);
 
         [LoggerMessage(LogMessageLogLevel, "{message}")]
         public static partial void LogMessage(this ILogger<EventSubWebsocketClient> logger, string message);
@@ -28,8 +28,8 @@ namespace TwitchLib.EventSub.Websockets.Extensions
         [LoggerMessage(LogLevel.Warning, "Found unknown message type: {messageType}")]
         public static partial void LogUnknownMessageType(this ILogger<EventSubWebsocketClient> logger, string messageType);
         
-        [LoggerMessage(LogLevel.Critical, "{closeStatus} - {closeStatusDescription}")]
-        public static partial void LogWebsocketClosed(this ILogger<WebsocketClient> logger, WebSocketCloseStatus closeStatus, string closeStatusDescription);
+        [LoggerMessage("{closeStatus} - {closeStatusDescription}")]
+        public static partial void LogWebsocketClosed(this ILogger<WebsocketClient> logger, LogLevel logLevel, WebSocketCloseStatus closeStatus, string closeStatusDescription);
 
         public static void LogMessage(this ILogger<EventSubWebsocketClient> logger, byte[] message)
         {
