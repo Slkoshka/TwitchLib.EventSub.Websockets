@@ -17,7 +17,7 @@
 	<PackageLicenseExpression>MIT</PackageLicenseExpression>
 	<Copyright>Copyright 2025</Copyright>
 	<PackageTags>twitch library events eventsub websockets eventsockets c# csharp netstandard2.0 netstandard2.1 net8.0</PackageTags>
-	<PackageReleaseNotes></PackageReleaseNotes>
+	<PackageReleaseNotes>removed INotificationHandler interface, Removed deprecated versions of .NET, All EventSub events were moved to `TwitchLib.EventSub.Core` Nuget Package, Like Events, all EventSub Models were moved to the `TwitchLib.EventSub.Core` package</PackageReleaseNotes>
 	<NeutralLanguage>en-US</NeutralLanguage>
 	<ImplicitUsings>disable</ImplicitUsings>
 	<Nullable>enable</Nullable>
