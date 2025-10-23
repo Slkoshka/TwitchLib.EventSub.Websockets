@@ -1,8 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
-using System.IO;
 using System.Net.WebSockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TwitchLib.EventSub.Core;
@@ -33,7 +32,7 @@ namespace TwitchLib.EventSub.Websockets.Client
         internal event AsyncEventHandler<ErrorOccuredArgs>? OnErrorOccurred;
 
         private ClientWebSocket _webSocket;
-        private readonly ILogger<WebsocketClient>? _logger;
+        private readonly ILogger<WebsocketClient> _logger;
 
         /// <summary>
         /// Constructor to create a new Websocket client with a logger
@@ -42,7 +41,7 @@ namespace TwitchLib.EventSub.Websockets.Client
         public WebsocketClient(ILogger<WebsocketClient>? logger = null)
         {
             _webSocket = new ClientWebSocket();
-            _logger = logger;
+            _logger = logger ?? NullLogger<WebsocketClient>.Instance;
         }
 
         /// <summary>
@@ -59,10 +58,10 @@ namespace TwitchLib.EventSub.Websockets.Client
                 if (_webSocket.State is WebSocketState.Closed)  //after a socken is closed it cannot be reopened
                     _webSocket = new();
 
-                await _webSocket.ConnectAsync(url, CancellationToken.None);
+                await _webSocket.ConnectAsync(url, CancellationToken.None).ConfigureAwait(false);
 
 #pragma warning disable 4014
-                Task.Run(async () => await ProcessDataAsync());
+                Task.Run(async () => await ProcessDataAsync().ConfigureAwait(false));
 #pragma warning restore 4014
 
                 return IsConnected;
@@ -83,7 +82,7 @@ namespace TwitchLib.EventSub.Websockets.Client
             try
             {
                 if (_webSocket.State is WebSocketState.Open or WebSocketState.Connecting)
-                    await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
+                    await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None).ConfigureAwait(false);
 
                 return true;
             }
@@ -121,7 +120,7 @@ namespace TwitchLib.EventSub.Websockets.Client
 #endif
                     do
                     {
-                        receiveResult = await _webSocket.ReceiveAsync(buffer, CancellationToken.None);
+                        receiveResult = await _webSocket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
 
                         if (payloadSize + receiveResult.Count >= store.Length)
                         {
@@ -155,7 +154,7 @@ namespace TwitchLib.EventSub.Websockets.Client
                             break;
                         case WebSocketMessageType.Close:
                             var logLevel = _webSocket.CloseStatus is WebSocketCloseStatus.NormalClosure ? LogLevel.Information : LogLevel.Critical;
-                            _logger?.LogWebsocketClosed(logLevel, (WebSocketCloseStatus)_webSocket.CloseStatus!, _webSocket.CloseStatusDescription!);
+                            _logger.LogWebsocketClosed(logLevel, (WebSocketCloseStatus)_webSocket.CloseStatus!, _webSocket.CloseStatusDescription!);
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();

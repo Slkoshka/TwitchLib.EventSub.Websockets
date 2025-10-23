@@ -481,7 +481,7 @@ namespace TwitchLib.EventSub.Websockets
             url = url ?? new Uri(WEBSOCKET_URL);
             _lastReceived = DateTimeOffset.MinValue;
 
-            var success = await _websocketClient.ConnectAsync(url);
+            var success = await _websocketClient.ConnectAsync(url).ConfigureAwait(false);
 
             if (!success)
                 return false;
@@ -502,7 +502,7 @@ namespace TwitchLib.EventSub.Websockets
         public async Task<bool> DisconnectAsync()
         {
             _cts?.Cancel();
-            return await _websocketClient.DisconnectAsync();
+            return await _websocketClient.DisconnectAsync().ConfigureAwait(false);
         }
 
         /// <summary>
@@ -521,7 +521,7 @@ namespace TwitchLib.EventSub.Websockets
         /// <returns>true: Reconnect successful false: Reconnect failed</returns>
         private async Task<bool> ReconnectAsync(Uri url)
         {
-            url = url ?? new Uri(WEBSOCKET_URL);
+            url ??= new Uri(WEBSOCKET_URL);
 
             if (_reconnectRequested)
             {
@@ -533,7 +533,7 @@ namespace TwitchLib.EventSub.Websockets
                 reconnectClient.OnDataReceived += OnDataReceived;
                 reconnectClient.OnErrorOccurred += OnErrorOccurred;
 
-                if (!await reconnectClient.ConnectAsync(url))
+                if (!await reconnectClient.ConnectAsync(url).ConfigureAwait(false))
                     return false;
 
 
@@ -548,10 +548,10 @@ namespace TwitchLib.EventSub.Websockets
                         _websocketClient = reconnectClient;
 
                         if (oldRunningClient.IsConnected)
-                            await oldRunningClient.DisconnectAsync();
+                            await oldRunningClient.DisconnectAsync().ConfigureAwait(false);
                         oldRunningClient.Dispose();
 
-                        await WebsocketReconnected.InvokeAsync(this, new());
+                        await WebsocketReconnected.InvokeAsync(this, new()).ConfigureAwait(false);
 
                         _reconnectRequested = false;
                         _reconnectComplete = false;
@@ -559,16 +559,16 @@ namespace TwitchLib.EventSub.Websockets
                         return true;
                     }
 
-                    await Task.Delay(100);
+                    await Task.Delay(100).ConfigureAwait(false);
                 }
 
-                _logger?.LogReconnectFailed(SessionId);
+                _logger.LogReconnectFailed(SessionId);
 
                 return false;
             }
 
             if (_websocketClient.IsConnected)
-                await DisconnectAsync();
+                await DisconnectAsync().ConfigureAwait(false);
 
             _websocketClient.Dispose();
 
@@ -579,10 +579,10 @@ namespace TwitchLib.EventSub.Websockets
             _websocketClient.OnDataReceived += OnDataReceived;
             _websocketClient.OnErrorOccurred += OnErrorOccurred;
 
-            if (!await ConnectAsync())
+            if (!await ConnectAsync().ConfigureAwait(false))
                 return false;
 
-            await WebsocketReconnected.InvokeAsync(this, new());
+            await WebsocketReconnected.InvokeAsync(this, new()).ConfigureAwait(false);
 
             return true;
         }
@@ -601,12 +601,12 @@ namespace TwitchLib.EventSub.Websockets
                         if (_lastReceived.Add(_keepAliveTimeout) < DateTimeOffset.Now)
                             break;
 
-                await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
+                await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token).ConfigureAwait(false);
             }
 
-            await DisconnectAsync();
+            await DisconnectAsync().ConfigureAwait(false);
 
-            await WebsocketDisconnected.InvokeAsync(this, new());
+            await WebsocketDisconnected.InvokeAsync(this, new()).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -616,7 +616,7 @@ namespace TwitchLib.EventSub.Websockets
         /// <param name="e">EventArgs send with the event. <see cref="DataReceivedArgs"/></param>
         private async Task OnDataReceived(object? sender, DataReceivedArgs e)
         {
-            _logger?.LogMessage(e.Bytes);
+            _logger.LogMessage(e.Bytes);
             _lastReceived = DateTimeOffset.Now;
 
             var json = JsonDocument.Parse(e.Bytes);
@@ -628,10 +628,10 @@ namespace TwitchLib.EventSub.Websockets
                 switch (metadata.MessageType)
                 {
                     case "session_welcome":
-                        await HandleWelcome(metadata, payload);
+                        await HandleWelcomeAsync(metadata, payload).ConfigureAwait(false);
                         break;
                     case "session_disconnect":
-                        await HandleDisconnect(metadata, payload);
+                        await HandleDisconnectAsync(metadata, payload).ConfigureAwait(false);
                         break;
                     case "session_reconnect":
                         HandleReconnect(metadata, payload);
@@ -640,13 +640,13 @@ namespace TwitchLib.EventSub.Websockets
                         HandleKeepAlive(metadata, payload);
                         break;
                     case "notification":
-                        await HandleNotificationAsync(metadata, payload);
+                        await HandleNotificationAsync(metadata, payload).ConfigureAwait(false);
                         break;
                     case "revocation":
-                        await HandleRevocation(metadata, payload);
+                        await HandleRevocationAsync(metadata, payload).ConfigureAwait(false);
                         break;
                     default:
-                        _logger?.LogUnknownMessageType(metadata.MessageType);
+                        _logger.LogUnknownMessageType(metadata.MessageType);
                         break;
                 }
             }
@@ -663,7 +663,7 @@ namespace TwitchLib.EventSub.Websockets
         /// <param name="e">EventArgs send with the event. <see cref="ErrorOccuredArgs"/></param>
         private async Task OnErrorOccurred(object? sender, ErrorOccuredArgs e)
         {
-            await ErrorOccurred.InvokeAsync(this, e);
+            await ErrorOccurred.InvokeAsync(this, e).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -672,17 +672,17 @@ namespace TwitchLib.EventSub.Websockets
         private void HandleReconnect(WebsocketEventSubMetadata metadata, JsonElement payload)
         {
             _ = metadata;
-            _logger?.LogReconnectRequested(SessionId);
+            _logger.LogReconnectRequested(SessionId);
             var data = JsonSerializer.Deserialize<EventSubWebsocketSessionInfoPayload>(payload, _jsonSerializerOptions);
             _reconnectRequested = true;
 
-            Task.Run(async () => await ReconnectAsync(new Uri(data?.Session.ReconnectUrl ?? WEBSOCKET_URL)));
+            Task.Run(async () => await ReconnectAsync(new Uri(data?.Session.ReconnectUrl ?? WEBSOCKET_URL)).ConfigureAwait(false));
         }
 
         /// <summary>
         /// Handles 'session_welcome' notifications
         /// </summary>
-        private async ValueTask HandleWelcome(WebsocketEventSubMetadata metadata, JsonElement payload)
+        private async ValueTask HandleWelcomeAsync(WebsocketEventSubMetadata metadata, JsonElement payload)
         {
             _ = metadata;
             var data = JsonSerializer.Deserialize<EventSubWebsocketSessionInfoPayload>(payload, _jsonSerializerOptions);
@@ -698,21 +698,21 @@ namespace TwitchLib.EventSub.Websockets
 
             _keepAliveTimeout = TimeSpan.FromSeconds(keepAliveTimeout ?? 10);
 
-            await WebsocketConnected.InvokeAsync(this, new WebsocketConnectedArgs { IsRequestedReconnect = _reconnectRequested });
+            await WebsocketConnected.InvokeAsync(this, new WebsocketConnectedArgs { IsRequestedReconnect = _reconnectRequested }).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Handles 'session_disconnect' notifications
         /// </summary>
-        private async Task HandleDisconnect(WebsocketEventSubMetadata metadata, JsonElement payload)
+        private async Task HandleDisconnectAsync(WebsocketEventSubMetadata metadata, JsonElement payload)
         {
             _ = metadata;
             var data = JsonSerializer.Deserialize<EventSubWebsocketSessionInfoPayload>(payload, _jsonSerializerOptions);
 
             if (data != null)
-                _logger?.LogForceDisconnected(data.Session.Id, data.Session.DisconnectedAt, data.Session.DisconnectReason);
+                _logger.LogForceDisconnected(data.Session.Id, data.Session.DisconnectedAt, data.Session.DisconnectReason);
 
-            await WebsocketDisconnected.InvokeAsync(this, new());
+            await WebsocketDisconnected.InvokeAsync(this, new()).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -731,7 +731,7 @@ namespace TwitchLib.EventSub.Websockets
         {
             if (!metadata.HasSubscriptionInfo)
             {
-                await ErrorOccurred.InvokeAsync(this, new ErrorOccuredArgs { Exception = new ArgumentException("Unable to determine subscription type or subscription version!") });
+                await ErrorOccurred.InvokeAsync(this, new ErrorOccuredArgs { Exception = new ArgumentException("Unable to determine subscription type or subscription version!") }).ConfigureAwait(false);
                 return;
             }
             var task = (metadata.SubscriptionType, metadata.SubscriptionVersion) switch
@@ -816,27 +816,27 @@ namespace TwitchLib.EventSub.Websockets
                 ("user.whisper.message", "1") => InvokeEventSubEvent<UserWhisperMessageArgs, UserWhisperMessage>(UserWhisperMessage),
                 _ => InvokeEventSubEvent<UnknownEventSubNotificationArgs, JsonElement>(UnknownEventSubNotification),
             };
-            await task;
+            await task.ConfigureAwait(false);
 
             async Task InvokeEventSubEvent<TEvent, TModel>(AsyncEventHandler<TEvent>? asyncEventHandler)
                 where TEvent : TwitchLibEventSubNotificationArgs<TModel>, new()
             {
                 var notification = JsonSerializer.Deserialize<EventSubNotificationPayload<TModel>>(payload, _jsonSerializerOptions);
-                await asyncEventHandler.InvokeAsync(this, new TEvent { Metadata = metadata, Payload = notification });
+                await asyncEventHandler.InvokeAsync(this, new TEvent { Metadata = metadata, Payload = notification }).ConfigureAwait(false);
             }
         }
 
         /// <summary>
         /// Handles 'revocation' notifications
         /// </summary>
-        private async Task HandleRevocation(WebsocketEventSubMetadata metadata, JsonElement payload)
+        private async Task HandleRevocationAsync(WebsocketEventSubMetadata metadata, JsonElement payload)
         {
             var data = JsonSerializer.Deserialize<EventSubNotificationPayload<object?>>(payload, _jsonSerializerOptions);
 
             if (data is null)
                 throw new InvalidOperationException("Parsed JSON cannot be null!");
 
-            await Revocation?.InvokeAsync(this, new RevocationArgs { Metadata = metadata, Payload = data });
+            await Revocation.InvokeAsync(this, new RevocationArgs { Metadata = metadata, Payload = data }).ConfigureAwait(false);
         }
     }
 }
