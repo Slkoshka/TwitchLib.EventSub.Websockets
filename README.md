@@ -81,7 +81,7 @@ namespace TwitchLib.EventSub.Websockets.Test
             _eventSubWebsocketClient.WebsocketReconnected += OnWebsocketReconnected;
             _eventSubWebsocketClient.ErrorOccurred += OnErrorOccurred;
 
-            _eventSubWebsocketClient.ChannelFollow += OnChannelFollow; 
+            _eventSubWebsocketClient.ChannelChatMessage += OnChannelChatMessage; 
             // Get ClientId and ClientSecret by register an Application here: https://dev.twitch.tv/console/apps
             // https://dev.twitch.tv/docs/authentication/register-app/
             _twitchApi.Settings.ClientId = "YOUR_APP_CLIENT_ID";
@@ -113,10 +113,9 @@ namespace TwitchLib.EventSub.Websockets.Test
                 // subscribe to topics
                 // create condition Dictionary
                 // You need BOTH broadcaster and moderator values or EventSub returns an Error!
-                var condition = new Dictionary<string, string> { { "broadcaster_user_id", _userId }, {"moderator_user_id", _userId} };
+                var condition = new Dictionary<string, string> { { "broadcaster_user_id", _userId }, { "user_id", _userId} };
                 // Create and send EventSubscription
-                await _twitchApi.Helix.EventSub.CreateEventSubSubscriptionAsync("channel.follow", "2", condition, EventSubTransportMethod.Websocket,
-                _eventSubWebsocketClient.SessionId, accessToken: "BROADCASTER_ACCESS_TOKEN_WITH_SCOPES");
+                await _twitchApi.Helix.EventSub.CreateEventSubSubscriptionAsync("channel.chat.message", "1", condition, EventSubTransportMethod.Websocket, _eventSubWebsocketClient.SessionId);
                 // If you want to get Events for special Events you need to additionally add the AccessToken of the ChannelOwner to the request.
                 // https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/
             }
@@ -144,10 +143,9 @@ namespace TwitchLib.EventSub.Websockets.Test
             _logger.LogError($"Websocket {_eventSubWebsocketClient.SessionId} - Error occurred!");
         }
 
-        private async Task OnChannelFollow(object sender, ChannelFollowArgs e)
+        private async Task OnChannelChatMessage(object? sender, ChannelChatMessageArgs e)
         {
-            var eventData = e.Notification.Payload.Event;
-            _logger.LogInformation($"{eventData.UserName} followed {eventData.BroadcasterUserName} at {eventData.FollowedAt}");
+            _logger.LogInformation($"@{e.Payload.Event.ChatterUserName} #{e.Payload.Event.BroadcasterUserName}: {e.Payload.Event.Message.Text}");
         }
     }
 }
