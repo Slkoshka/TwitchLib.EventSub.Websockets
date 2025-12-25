@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using TwitchLib.EventSub.Core;
 using TwitchLib.EventSub.Websockets.Core.EventArgs;
 using TwitchLib.EventSub.Websockets.Extensions;
+using TwitchLib.EventSub.Websockets.Interfaces;
 
 #if NET6_0_OR_GREATER
 using System.Buffers;
@@ -33,15 +34,17 @@ namespace TwitchLib.EventSub.Websockets.Client
 
         private ClientWebSocket _webSocket;
         private readonly ILogger<WebsocketClient> _logger;
+        private IClientWebsocketProvider _webSocketProvider;
 
         /// <summary>
         /// Constructor to create a new Websocket client with a logger
         /// </summary>
         /// <param name="logger">Logger used by the websocket client to print various state info</param>
-        public WebsocketClient(ILogger<WebsocketClient>? logger = null)
+        public WebsocketClient(ILogger<WebsocketClient>? logger = null, IClientWebsocketProvider? webSocketProvider = null)
         {
             _webSocket = new ClientWebSocket();
             _logger = logger ?? NullLogger<WebsocketClient>.Instance;
+            _webSocketProvider = webSocketProvider ?? new DefaultClientWebsocketProvider();
         }
 
         /// <summary>
